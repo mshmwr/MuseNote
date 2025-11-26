@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 靈感筆記本</title>
+    <!-- 載入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 設定 Inter 字體 -->
+    <style>
+        body {font-family: 'Inter', sans-serif;background-color: #f7f9fb;}
+        /* 隱藏原生 number input 的箭頭 */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+        }
+        .tag-pill {cursor: pointer;transition: transform 0.1s;}
+        .tag-pill:hover {transform: translateY(-1px);box-shadow: 0 1px 2px rgba(0,0,0,0.1);}
+        .tag-pill.active-filter {outline: 2px solid #3b82f6; transform: scale(1.05);font-weight: 600;}
+        /* 確保日期輸入框在不同瀏覽器下外觀一致 */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+    }
+
+    /* --- 新增：檢視模式按鈕樣式 --- */
+    .view-mode-button.active {
+        background-color: #9333ea; /* purple-700 */
+        color: white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+        .view-mode-button:not(.active) {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            color: #374151; /* text-gray-700 */
+        }
+        .view-mode-button:not(.active):hover {
+            background-color: #d1d5db; /* bg-gray-300 */
+        }
+    
+    /* --- 新增：日曆檢視樣式 --- */
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background-color: #ddd;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .day-cell {
+        min-height: 80px; 
+        padding: 6px;
+        background-color: white;
+        position: relative;
+        user-select: none;
+    }
+    .day-cell.other-month {
+        background-color: #f3f4f6;
+        color: #9ca3af;
+    }
+    .day-header {
+        text-align: center;
+        font-weight: 600;
+        padding: 8px 0;
+        background-color: #e5e7eb;
+        color: #4b5563;
+    }
+    .note-square {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        margin: 1px;
+        display: inline-block;
+        cursor: pointer;
+        transition: transform 0.1s;
+        box-shadow: 0 0 1px rgba(0,0,0,0.5);
+    }
+    .note-square:hover {
+        transform: scale(1.2);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+</style>
+</head><body class="min-h-screen p-4 sm:p-8 flex items-start justify-center"><div id="app-container" class="w-full max-w-2xl bg-white shadow-2xl rounded-xl p-6 sm:p-8 mt-10">
+    <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center border-b pb-3">
+        靈感筆記本 ✨
+    </h1>
+
+    <!-- 搜尋與篩選區塊 -->
+    <div class="mb-6 space-y-4">
+        <input type="text" id="search-input" placeholder="🔍 關鍵字搜尋 (標題/備註)..."
+               class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-700">
+        
+        <div id="tag-filter-container" class="border p-3 rounded-lg bg-gray-50">
+            <p class="font-semibold text-sm text-gray-600 mb-2">點擊標籤進行篩選：</p>
+            <div id="tag-filter-list" class="flex flex-wrap gap-2">
+                <!-- 標籤篩選列表會在這裡動態載入 -->
+                <span id="no-tags-message" class="text-gray-400 text-sm">無可用標籤</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 錯誤或訊息顯示區 -->
+    <p id="message" class="text-sm text-center text-red-500 mb-4 h-5"></p>
+
+    <!-- 新增靈感區塊 -->
+    <div class="bg-gray-100 p-5 rounded-xl mb-6 shadow-inner">
+        <h2 class="text-xl font-bold text-gray-800 mb-3">新增靈感筆記</h2>
+        <div class="space-y-3">
+            <input type="text" id="title-input" placeholder="標題 (必填)"
+                   class="w-full p-2 border border-gray-300 rounded-lg focus:ring-purple-500">
+            <textarea id="remark-input" placeholder="備註或詳細內容 (支援多行)" rows="3"
+                      class="w-full p-2 border border-gray-300 rounded-lg focus:ring-purple-500"></textarea>
+            
+            <!-- 日期輸入欄位 -->
+            <input type="date" id="date-input" title="靈感日期"
+                   class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-purple-500">
+                   
+            <input type="url" id="url-input" placeholder="相關 URL 連結 (可選)"
+                   class="w-full p-2 border border-gray-300 rounded-lg focus:ring-purple-500">
+            <input type="url" id="image-url-input" placeholder="圖片 URL (可選)"
+                   class="w-full p-2 border border-gray-300 rounded-lg focus:ring-purple-500">
+            
+            <!-- 標籤輸入與建議 (下拉選單式選擇) -->
+            <div class="relative">
+                <input type="text" id="tag-input" placeholder="標籤 (輸入關鍵字後，可從下拉選單中點選或新增多個標籤，請用逗號分隔)"
+                       class="w-full p-2 border border-gray-300 rounded-lg focus:ring-purple-500">
+                <div id="tag-suggestions" class="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto hidden mt-1">
+                    <!-- 標籤建議會在這裡動態載入 -->
+                </div>
+            </div>
+            
+            <button id="add-button" disabled
+                    class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out disabled:opacity-50">
+                💾 儲存靈感
+            </button>
+        </div>
+    </div>
+    
+    <!-- 檢視模式切換按鈕 -->
+    <div class="mb-6 flex justify-center space-x-4">
+        <button id="view-calendar-btn" data-mode="calendar" class="view-mode-button active px-4 py-2 text-sm rounded-lg font-semibold shadow-md">📅 日曆檢視</button>
+        <button id="view-list-btn" data-mode="list" class="view-mode-button px-4 py-2 text-sm rounded-lg font-semibold">📋 清單檢視</button>
+        <button id="view-tags-btn" data-mode="tags" class="view-mode-button px-4 py-2 text-sm rounded-lg font-semibold">🏷️ 標籤分類</button>
+    </div>
+
+    <!-- 載入訊息 -->
+    <p id="loading-message" class="text-center text-gray-500 py-8">
+        載入中... 正在嘗試連線到資料庫... (請等待此訊息消失)
+    </p>
+    
+    <!-- 動態檢視容器 -->
+    <div id="calendar-container" class="space-y-4">
+        <!-- 日曆將在這裡渲染 -->
+    </div>
+    <div id="notes-list" class="space-y-4 hidden">
+        <!-- 清單檢視將在這裡渲染 -->
+    </div>
+    <div id="tag-group-list" class="space-y-4 hidden">
+        <!-- 標籤分類檢視將在這裡渲染 -->
+    </div>
+
+    <!-- 使用者 ID 顯示 -->
+    <p class="mt-8 text-xs text-gray-400 text-center">
+        使用者 ID: <span id="user-id-display" class="font-mono text-gray-600 break-all"></span>
+    </p>
+</div>
+
+<!-- 模態視窗 (Modal) 用於顯示筆記詳情 -->
+<div id="note-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-50 p-4" onclick="document.getElementById('note-detail-modal').classList.add('hidden')">
+    <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-start border-b pb-3 mb-4">
+            <h3 id="modal-title" class="text-2xl font-bold text-gray-900"></h3>
+            <button onclick="document.getElementById('note-detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-700">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <p id="modal-date" class="text-sm text-gray-500 font-medium mb-3"></p>
+        <img id="modal-image" class="w-full h-40 object-cover rounded-lg mb-4 hidden" alt="靈感圖片" />
+        <p id="modal-remark" class="text-gray-700 whitespace-pre-wrap mb-4 border-t pt-4"></p>
+        <a id="modal-url" href="#" target="_blank" class="text-blue-500 hover:text-blue-700 text-sm truncate block hidden mb-4"></a>
+        <div id="modal-tags" class="flex flex-wrap gap-2 pt-2 border-t border-gray-100"></div>
+    </div>
+</div>
+
+
+<!-- Firebase 腳本 -->
+<script type="module">
+    // 1. 載入 Firebase 必要的模組
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { 
+        getAuth, 
+        signInAnonymously,
+        signInWithCustomToken, 
+        onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { 
+        getFirestore, 
+        collection, 
+        addDoc, 
+        onSnapshot, 
+        doc, 
+        setDoc,
+        deleteDoc,
+        query,
+        setLogLevel 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // =========================================================================
+    // 2. Firebase 配置與初始化 (使用環境提供的全域變數)
+    // =========================================================================
+    
+    // 必須使用環境變數來確保認證成功
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
+    const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+
+    let app;
+    let db;
+    let auth;
+    let userId = null;
+    let isAuthReady = false;
+    let allInspirations = []; 
+    let tagMetadata = {};     
+    let selectedTags = [];    
+    let currentViewMode = 'calendar'; // 預設為日曆檢視
+    let currentCalendarDate = new Date(); // 當前日曆顯示的月份
+
+    // DOM 元素
+    const titleInput = document.getElementById('title-input');
+    const remarkInput = document.getElementById('remark-input');
+    const dateInput = document.getElementById('date-input'); 
+    const urlInput = document.getElementById('url-input');
+    const imageUrlInput = document.getElementById('image-url-input');
+    const tagInput = document.getElementById('tag-input');
+    const addButton = document.getElementById('add-button');
+    const messageDisplay = document.getElementById('message');
+    const loadingMessage = document.getElementById('loading-message');
+    const userIdDisplay = document.getElementById('user-id-display');
+    const searchInput = document.getElementById('search-input');
+    const tagSuggestions = document.getElementById('tag-suggestions');
+    const tagFilterList = document.getElementById('tag-filter-list');
+    const noTagsMessage = document.getElementById('no-tags-message');
+    
+    // 檢視容器
+    const calendarContainer = document.getElementById('calendar-container');
+    const notesList = document.getElementById('notes-list');
+    const tagGroupList = document.getElementById('tag-group-list');
+    
+    // 檢視切換按鈕
+    const viewModeButtons = document.querySelectorAll('.view-mode-button');
+
+    // Tailwind 預設顏色陣列 (用於新標籤)
+    const tagColors = [
+        'bg-blue-500', 'bg-green-500', 'bg-red-500', 'bg-yellow-500', 
+        'bg-indigo-500', 'bg-pink-500', 'bg-purple-500', 'bg-teal-500'
+    ];
+    
+    const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+
+
+    // 3. 實用函數：顯示錯誤訊息
+    function showMessage(text, isError = true) {
+        messageDisplay.textContent = text;
+        messageDisplay.classList.toggle('text-red-500', isError);
+        messageDisplay.classList.toggle('text-green-500', !isError);
+        setTimeout(() => messageDisplay.textContent = '', 3000);
+    }
+
+    // 4. 取得 Firestore 集合路徑
+    function getInspirationsPath() {
+        // 私人資料路徑: /artifacts/{appId}/users/{userId}/inspirations
+        return `artifacts/${appId}/users/${userId}/inspirations`;
+    }
+
+    function getTagMetadataPath() {
+        // 標籤 metadata 路徑: /artifacts/{appId}/users/{userId}/tag_metadata
+        return `artifacts/${appId}/users/${userId}/tag_metadata`;
+    }
+
+    // 5. 應用程式初始化
+    const startApp = async () => {
+        try {
+            // 啟用 Firebase 日誌，以便在控制台中檢查錯誤
+            setLogLevel('Debug');
+            
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            // 認證流程：優先使用 custom token 登入，否則使用匿名登入
+            if (initialAuthToken) { 
+                await signInWithCustomToken(auth, initialAuthToken); 
+            } else { 
+                await signInAnonymously(auth); 
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    userIdDisplay.textContent = userId;
+                    // 認證完成後，開始監聽資料庫
+                    setupRealtimeListeners();
+                    addButton.disabled = false; // 啟用儲存按鈕
+                    console.log("Firebase 認證成功，userId:", userId);
+                } else {
+                    // 如果登入失敗，仍設定一個 UUID 作為未認證 ID
+                    userId = crypto.randomUUID(); 
+                    isAuthReady = true;
+                    userIdDisplay.textContent = userId + " (認證失敗或離線模式)";
+                    showMessage('無法連接 Firebase，資料可能無法持久儲存。', true);
+                    addButton.disabled = true;
+                    console.error("Firebase 認證失敗，使用 UUID:", userId);
+                }
+                loadingMessage.classList.add('hidden'); 
+            });
+
+        } catch (error) {
+            console.error("Firebase 初始化或認證失敗:", error);
+            showMessage(`初始化失敗: ${error.message}。請檢查控制台。`, true);
+            loadingMessage.textContent = '載入失敗。請檢查控制台錯誤。';
+            addButton.disabled = true;
+        }
+    }
+
+    // 6. 處理標籤 (保持不變)
+    async function processTags(tags) {
+        const processedTags = tags.map(tag => tag.trim()).filter(tag => tag.length > 0);
+        
+        for (const tag of processedTags) {
+            if (!tagMetadata[tag]) {
+                const randomColor = tagColors[Math.floor(Math.random() * tagColors.length)];
+                const tagDocRef = doc(db, getTagMetadataPath(), tag);
+                
+                await setDoc(tagDocRef, {
+                    colorClass: randomColor
+                }, { merge: true });
+                tagMetadata[tag] = randomColor;
+            }
+        }
+        return processedTags;
+    }
+
+    // 7. 新增靈感筆記 (保持不變)
+    async function addInspiration() {
+        const title = titleInput.value.trim();
+        const remark = remarkInput.value.trim();
+        const inspirationDate = dateInput.value.trim(); 
+        const url = urlInput.value.trim();
+        const imageUrl = imageUrlInput.value.trim();
+        const tagString = tagInput.value.trim();
+        const tags = tagString.split(',').map(t => t.trim()).filter(t => t.length > 0);
+
+        if (!title) {
+            showMessage('請輸入標題！', true);
+            return;
+        }
+        
+        if (!isAuthReady || !auth.currentUser) {
+            showMessage('應用程式尚未準備好 (認證中或失敗)。請稍候。', true);
+            return;
+        }
+
+        addButton.disabled = true; 
+
+        try {
+            const processedTags = await processTags(tags);
+            const inspirationsCollectionRef = collection(db, getInspirationsPath());
+            
+            await addDoc(inspirationsCollectionRef, {
+                title: title,
+                remark: remark,
+                inspirationDate: inspirationDate || null, 
+                url: url,
+                imageUrl: imageUrl,
+                tags: processedTags,
+                createdAt: Date.now()
+            });
+
+            titleInput.value = '';
+            remarkInput.value = '';
+            dateInput.value = ''; 
+            urlInput.value = '';
+            imageUrlInput.value = '';
+            tagInput.value = '';
+            showMessage('靈感筆記儲存成功！', false);
+
+        } catch (error) {
+            console.error("新增靈感失敗:", error);
+            showMessage(`新增失敗: ${error.message}。請檢查控制台錯誤。`, true);
+        } finally {
+            addButton.disabled = false; 
+        }
+    }
+    
+    addButton.addEventListener('click', addInspiration);
+
+    // 8. 實時資料監聽器 (保持不變)
+    function setupRealtimeListeners() {
+        if (!db || !userId) return;
+
+        // 監聽標籤 metadata
+        const tagMetadataRef = collection(db, getTagMetadataPath());
+        onSnapshot(query(tagMetadataRef), (snapshot) => {
+            const newTagMetadata = {};
+            snapshot.docs.forEach(doc => {
+                newTagMetadata[doc.id] = doc.data().colorClass;
+            });
+            tagMetadata = newTagMetadata;
+            renderTagFilters(); 
+            filterAndRender(); 
+        }, (error) => {
+            console.error("標籤 metadata 監聽失敗:", error);
+            showMessage("標籤資料庫連接錯誤。", true);
+        });
+
+        // 監聽靈感筆記
+        const inspirationsRef = collection(db, getInspirationsPath());
+        onSnapshot(query(inspirationsRef), (snapshot) => {
+            allInspirations = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            allInspirations.sort((a, b) => b.createdAt - a.createdAt);
+
+            filterAndRender(); 
+        }, (error) => {
+            console.error("靈感筆記監聽失敗:", error);
+            showMessage("靈感筆記資料庫連接錯誤。", true);
+        });
+    }
+
+    // 9. 處理篩選和搜尋邏輯 (核心邏輯)
+    function filterAndRender() {
+        const query = searchInput.value.trim().toLowerCase();
+        
+        let filteredNotes = allInspirations.filter(note => {
+            // 1. 關鍵字搜尋
+            const matchesKeyword = !query || 
+                                 (note.title && note.title.toLowerCase().includes(query)) || 
+                                 (note.remark && note.remark.toLowerCase().includes(query));
+
+            // 2. 標籤篩選 (必須包含所有選定的標籤)
+            const matchesTags = selectedTags.length === 0 || 
+                                selectedTags.every(tag => (note.tags || []).includes(tag));
+            
+            // 日曆模式下，只顯示有日期的筆記
+            if (currentViewMode === 'calendar' && !note.inspirationDate) {
+                return false;
+            }
+
+            return matchesKeyword && matchesTags;
+        });
+
+        // 根據當前模式渲染
+        notesList.classList.add('hidden');
+        calendarContainer.classList.add('hidden');
+        tagGroupList.classList.add('hidden');
+
+        if (currentViewMode === 'calendar') {
+            renderCalendarView(filteredNotes);
+            calendarContainer.classList.remove('hidden');
+        } else if (currentViewMode === 'list') {
+            renderListView(filteredNotes);
+            notesList.classList.remove('hidden');
+        } else if (currentViewMode === 'tags') {
+            renderTagGroupView(filteredNotes);
+            tagGroupList.classList.remove('hidden');
+        }
+    }
+
+    // 綁定搜尋輸入框事件
+    searchInput.addEventListener('input', filterAndRender);
+    
+    // 綁定檢視切換按鈕事件
+    viewModeButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            currentViewMode = e.currentTarget.dataset.mode;
+            viewModeButtons.forEach(btn => btn.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            filterAndRender(); 
+        });
+    });
+
+
+    // 10. 渲染標籤篩選列表 (保持不變)
+    function renderTagFilters() {
+        tagFilterList.innerHTML = '';
+        const allUniqueTags = Object.keys(tagMetadata).sort();
+
+        if (allUniqueTags.length === 0) {
+            noTagsMessage.classList.remove('hidden');
+            return;
+        }
+        noTagsMessage.classList.add('hidden');
+
+        // 添加 '全部' 標籤
+        const allTagEl = createTagPill('全部', 'bg-gray-200 text-gray-800', 'all');
+        tagFilterList.appendChild(allTagEl);
+
+        allUniqueTags.forEach(tag => {
+            const color = tagMetadata[tag] || 'bg-gray-400';
+            const textColor = color.includes('500') ? 'text-white' : 'text-gray-800';
+            const tagEl = createTagPill(tag, `${color} ${textColor}`, tag);
+            tagEl.classList.toggle('active-filter', selectedTags.includes(tag)); 
+            tagFilterList.appendChild(tagEl);
+        });
+
+        if (selectedTags.length === 0) {
+             allTagEl.classList.add('active-filter');
+        } else {
+             allTagEl.classList.remove('active-filter');
+        }
+    }
+
+    function createTagPill(tagName, colorClass, filterValue) {
+        const isFilterActive = filterValue === 'all' ? selectedTags.length === 0 : selectedTags.includes(filterValue);
+        
+        const pill = document.createElement('span');
+        pill.textContent = tagName;
+        pill.className = `tag-pill text-xs font-medium px-3 py-1 rounded-full shadow-sm ${colorClass} ${isFilterActive ? 'active-filter' : ''}`;
+        pill.dataset.tag = filterValue;
+
+        pill.addEventListener('click', () => {
+            if (filterValue === 'all') {
+                selectedTags = [];
+            } else if (selectedTags.includes(filterValue)) {
+                selectedTags = selectedTags.filter(t => t !== filterValue);
+            } else {
+                selectedTags.push(filterValue);
+            }
+            
+            renderTagFilters();
+            filterAndRender();
+        });
+
+        return pill;
+    }
+
+    // 11. 渲染清單檢視 (原 renderNotes，現改為 ListView)
+    function renderListView(notes) {
+        notesList.innerHTML = ''; 
+
+        if (notes.length === 0) {
+            notesList.innerHTML = `
+                <p class="text-center text-gray-500 py-8">
+                    找不到符合條件的靈感筆記。
+                </p>
+            `;
+            return;
+        }
+
+        notes.forEach(note => {
+            const noteElement = document.createElement('div');
+            noteElement.className = `p-5 bg-white border border-gray-200 rounded-xl shadow-lg hover:shadow-xl transition duration-300 space-y-3`;
+            
+            // ... (Tags, URL, Image HTML 保持不變)
+            const tagsHTML = (note.tags || []).map(tag => {
+                const color = tagMetadata[tag] || 'bg-gray-400';
+                const textColor = color.includes('500') ? 'text-white' : 'text-gray-800';
+                // 使用 document.dispatchEvent 觸發自訂事件來避免在 HTML 模板中直接執行複雜 JS 邏輯
+                return `<span class="tag-pill text-xs font-medium px-2 py-0.5 rounded-full ${color} ${textColor}" data-tag="${tag}" onclick="document.dispatchEvent(new CustomEvent('filtertag', { detail: '${tag}' }))">${tag}</span>`;
+            }).join('');
+
+            const urlHTML = note.url ? `<a href="${note.url}" target="_blank" class="text-blue-500 hover:text-blue-700 text-sm truncate block mt-1">連結: ${note.url}</a>` : '';
+            
+            const imageHTML = note.imageUrl ? `<img src="${note.imageUrl}" alt="靈感圖片" class="mt-3 w-full h-40 object-cover rounded-lg" onerror="this.onerror=null; this.src='https://placehold.co/400x200/cccccc/333333?text=無法載入圖片';" />` : '';
+
+            const dateHTML = note.inspirationDate ? `<p class="text-sm text-gray-500 font-medium pt-1">日期: ${note.inspirationDate}</p>` : '';
+
+            noteElement.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <h3 class="text-xl font-bold text-gray-900 pr-4">${note.title}</h3>
+                    <div class="flex space-x-2 flex-shrink-0">
+                        <!-- 編輯按鈕 -->
+                        <button class="edit-note p-2 text-gray-500 hover:text-blue-600 rounded-full transition duration-150" data-id="${note.id}" onclick="showMessage('編輯功能待建構', true)">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                        <!-- 刪除按鈕 -->
+                        <button class="delete-note p-2 text-red-500 hover:text-red-700 rounded-full transition duration-150" data-id="${note.id}">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                ${dateHTML}
+                ${imageHTML}
+
+                <p class="text-gray-700 whitespace-pre-wrap">${note.remark}</p>
+                
+                ${urlHTML}
+
+                <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                    ${tagsHTML}
+                </div>
+            `;
+            
+            notesList.appendChild(noteElement);
+
+            noteElement.querySelector('.delete-note').addEventListener('click', () => {
+                deleteInspiration(note.id);
+            });
+        });
+    }
+    
+    // 12. 渲染標籤分類檢視
+    function renderTagGroupView(notes) {
+        tagGroupList.innerHTML = '';
+        
+        if (notes.length === 0) {
+            tagGroupList.innerHTML = `
+                <p class="text-center text-gray-500 py-8">
+                    找不到符合條件的靈感筆記。
+                </p>
+            `;
+            return;
+        }
+
+        const notesByTag = {};
+        notes.forEach(note => {
+            const tags = note.tags && note.tags.length > 0 ? note.tags : ['無標籤'];
+            tags.forEach(tag => {
+                if (!notesByTag[tag]) {
+                    notesByTag[tag] = [];
+                }
+                notesByTag[tag].push(note);
+            });
+        });
+
+        Object.keys(notesByTag).sort().forEach(tag => {
+            const tagSection = document.createElement('div');
+            const color = tagMetadata[tag] || 'bg-gray-400';
+            const textColor = color.includes('500') ? 'text-white' : 'text-gray-800';
+
+            tagSection.className = 'mb-6 p-4 border rounded-xl shadow-lg bg-white';
+            tagSection.innerHTML = `
+                <h3 class="text-xl font-bold mb-3 pb-2 border-b">
+                    <span class="px-3 py-1 rounded-full ${color} ${textColor} shadow-md">${tag}</span>
+                    <span class="text-gray-500 text-sm ml-2">(${notesByTag[tag].length} 則筆記)</span>
+                </h3>
+                <div class="space-y-3">
+                    ${notesByTag[tag].map(note => `
+                        <div class="p-3 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="showNoteDetail('${note.id}')">
+                            <p class="font-semibold text-gray-800 truncate">${note.title}</p>
+                            <p class="text-xs text-gray-500">${note.inspirationDate || '無日期'}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            tagGroupList.appendChild(tagSection);
+        });
+    }
+    
+    // 13. 渲染日曆檢視 (新的預設檢視)
+    function renderCalendarView(notes) {
+        calendarContainer.innerHTML = '';
+
+        if (notes.length === 0) {
+            calendarContainer.innerHTML = `
+                <p class="text-center text-gray-500 py-8">
+                    找不到符合條件的靈感筆記。
+                </p>
+            `;
+            // return; // 即使沒有筆記也應該顯示日曆框架
+        }
+
+        // 1. 準備數據: 將筆記按日期分組
+        const notesByDate = {};
+        notes.forEach(note => {
+            if (note.inspirationDate) {
+                if (!notesByDate[note.inspirationDate]) {
+                    notesByDate[note.inspirationDate] = [];
+                }
+                notesByDate[note.inspirationDate].push(note);
+            }
+        });
+
+        // 2. 導航和標題
+        const month = currentCalendarDate.getMonth();
+        const year = currentCalendarDate.getFullYear();
+        const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+
+        const header = document.createElement('div');
+        header.className = 'flex justify-between items-center mb-4';
+        header.innerHTML = `
+            <button id="prev-month" class="text-purple-600 hover:text-purple-800 p-2 rounded-full">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <h2 class="text-xl font-bold text-gray-800">${year} 年 ${monthNames[month]}</h2>
+            <button id="next-month" class="text-purple-600 hover:text-purple-800 p-2 rounded-full">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+        `;
+        calendarContainer.appendChild(header);
+
+        // 3. 渲染日曆網格
+        const calendarGrid = document.createElement('div');
+        calendarGrid.className = 'calendar-grid';
+
+        // 渲染星期標頭
+        dayNames.forEach(day => {
+            const headerCell = document.createElement('div');
+            headerCell.className = 'day-header';
+            headerCell.textContent = day;
+            calendarGrid.appendChild(headerCell);
+        });
+
+        // 4. 計算日曆日期
+        const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 (Sun) - 6 (Sat)
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        // 填充上一個月的天數 (如果不是從星期日開始)
+        for (let i = 0; i < firstDayOfMonth; i++) {
+            const dayCell = document.createElement('div');
+            dayCell.className = 'day-cell other-month';
+            calendarGrid.appendChild(dayCell);
+        }
+
+        // 填充當月天數
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const notesToday = notesByDate[dateString] || [];
+            
+            const dayCell = document.createElement('div');
+            dayCell.className = 'day-cell flex flex-col justify-between';
+            dayCell.innerHTML = `
+                <p class="text-sm font-semibold">${day}</p>
+                <div class="flex flex-wrap items-end justify-start flex-grow">
+                    ${notesToday.map(note => {
+                        const firstTag = note.tags && note.tags[0];
+                        const color = tagMetadata[firstTag] || 'bg-gray-400';
+                        return `<span class="note-square ${color}" title="${note.title}" onclick="showNoteDetail('${note.id}')"></span>`;
+                    }).join('')}
+                </div>
+            `;
+            calendarGrid.appendChild(dayCell);
+        }
+
+        // 填充下一個月的天數
+        const totalCells = firstDayOfMonth + daysInMonth;
+        const remainingCells = 42 - totalCells; // 42 cells = 6 weeks
+        for (let i = 0; i < remainingCells && totalCells + i < 42; i++) {
+            const dayCell = document.createElement('div');
+            dayCell.className = 'day-cell other-month';
+            calendarGrid.appendChild(dayCell);
+        }
+
+        calendarContainer.appendChild(calendarGrid);
+
+        // 5. 綁定導航事件
+        document.getElementById('prev-month').addEventListener('click', () => {
+            currentCalendarDate = new Date(year, month - 1, 1);
+            filterAndRender();
+        });
+        document.getElementById('next-month').addEventListener('click', () => {
+            currentCalendarDate = new Date(year, month + 1, 1);
+            filterAndRender();
+        });
+    }
+    
+    // 14. 顯示筆記詳情模態視窗
+    window.showNoteDetail = (noteId) => {
+        const note = allInspirations.find(n => n.id === noteId);
+        if (!note) return;
+
+        const modal = document.getElementById('note-detail-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalDate = document.getElementById('modal-date');
+        const modalRemark = document.getElementById('modal-remark');
+        const modalUrl = document.getElementById('modal-url');
+        const modalImage = document.getElementById('modal-image');
+        const modalTags = document.getElementById('modal-tags');
+        
+        modalTitle.textContent = note.title;
+        modalDate.textContent = note.inspirationDate ? `日期: ${note.inspirationDate}` : '日期: 未設定';
+        modalRemark.textContent = note.remark;
+
+        // 處理 URL
+        if (note.url) {
+            modalUrl.href = note.url;
+            modalUrl.textContent = `前往連結: ${note.url}`;
+            modalUrl.classList.remove('hidden');
+        } else {
+            modalUrl.classList.add('hidden');
+        }
+
+        // 處理圖片
+        if (note.imageUrl) {
+            modalImage.src = note.imageUrl;
+            modalImage.classList.remove('hidden');
+            modalImage.onerror = function() {
+                this.classList.add('hidden');
+            }
+        } else {
+            modalImage.classList.add('hidden');
+        }
+
+        // 處理標籤
+        modalTags.innerHTML = (note.tags || []).map(tag => {
+            const color = tagMetadata[tag] || 'bg-gray-400';
+            const textColor = color.includes('500') ? 'text-white' : 'text-gray-800';
+            return `<span class="tag-pill text-xs font-medium px-2 py-0.5 rounded-full ${color} ${textColor}">${tag}</span>`;
+        }).join('');
+
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex'; // 確保顯示
+    }
+
+
+    // 15. 刪除靈感筆記 (保持不變)
+    async function deleteInspiration(noteId) {
+        try {
+            const noteDocRef = doc(db, getInspirationsPath(), noteId);
+            await deleteDoc(noteDocRef);
+            showMessage('靈感筆記已刪除！', false);
+        } catch (error) {
+            console.error("刪除筆記失敗:", error);
+            showMessage(`刪除失敗: ${error.message}`, true);
+        }
+    }
+
+    // 16. 標籤輸入建議 (保持不變)
+    tagInput.addEventListener('input', () => {
+        const inputVal = tagInput.value.split(',').pop().trim().toLowerCase();
+        tagSuggestions.innerHTML = '';
+        
+        if (inputVal.length > 0) {
+            const enteredTags = tagInput.value.split(',').map(t => t.trim().toLowerCase());
+            
+            const uniqueTags = Object.keys(tagMetadata).filter(tag => 
+                tag.toLowerCase().startsWith(inputVal) && !enteredTags.includes(tag.toLowerCase())
+            );
+            
+            if (uniqueTags.length > 0) {
+                tagSuggestions.classList.remove('hidden');
+                uniqueTags.forEach(tag => {
+                    const suggestionEl = document.createElement('div');
+                    suggestionEl.textContent = tag;
+                    suggestionEl.className = 'p-2 cursor-pointer hover:bg-purple-100 text-sm';
+                    suggestionEl.addEventListener('click', () => {
+                        let parts = tagInput.value.split(',');
+                        parts.pop(); 
+                        parts.push(tag); 
+                        tagInput.value = parts.join(', ') + ', '; 
+                        tagSuggestions.classList.add('hidden');
+                        tagInput.focus();
+                    });
+                    tagSuggestions.appendChild(suggestionEl);
+                });
+                return;
+            }
+        }
+        tagSuggestions.classList.add('hidden');
+    });
+    
+    // 17. 綁定動態點擊標籤事件 (保持不變)
+    document.addEventListener('filtertag', (e) => {
+        const tag = e.detail;
+        if (selectedTags.includes(tag)) {
+            selectedTags = selectedTags.filter(t => t !== tag);
+        } else {
+            selectedTags.push(tag);
+        }
+        tagFilterList.scrollIntoView({ behavior: 'smooth' }); 
+        renderTagFilters();
+        filterAndRender();
+    });
+
+    // 啟動應用程式
+    startApp();
+
+</script>
+</body></html>
