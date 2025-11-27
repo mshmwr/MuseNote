@@ -211,8 +211,23 @@
     
     // 必須使用環境變數來確保認證成功
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-    const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+    let firebaseConfig = {};
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    
+    // 嘗試從全域變數或 localStorage 取得 Firebase 配置
+    if (typeof __firebase_config !== 'undefined') {
+        try {
+            firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+        } catch (e) {
+            console.warn('Failed to parse __firebase_config:', e);
+        }
+    } else if (localStorage.getItem('firebase_config')) {
+        try {
+            firebaseConfig = JSON.parse(localStorage.getItem('firebase_config'));
+        } catch (e) {
+            console.warn('Failed to parse firebase_config from localStorage:', e);
+        }
+    }
 
 
     let app;
@@ -281,8 +296,20 @@
     // 5. 應用程式初始化
     const startApp = async () => {
         try {
-            // 啟用 Firebase 日誌，以便在控制台中檢查錯誤
-            setLogLevel('Debug');
+            // 驗證 Firebase 配置是否有效
+            if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+                const errorMsg = 'Firebase 配置未提供。請設定 __firebase_config 環境變數。';
+                console.warn(errorMsg);
+                showMessage(errorMsg, true);
+                loadingMessage.textContent = errorMsg;
+                addButton.disabled = true;
+                // 使用 offline 模式：生成臨時 ID
+                userId = crypto.randomUUID();
+                isAuthReady = true;
+                userIdDisplay.textContent = userId + " (離線模式)";
+                loadingMessage.classList.add('hidden');
+                return;
+            }
             
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
@@ -318,9 +345,15 @@
 
         } catch (error) {
             console.error("Firebase 初始化或認證失敗:", error);
-            showMessage(`初始化失敗: ${error.message}。請檢查控制台。`, true);
+            const errorMsg = error.code ? `Firebase 錯誤 (${error.code}): ${error.message}` : `初始化失敗: ${error.message}`;
+            showMessage(errorMsg, true);
             loadingMessage.textContent = '載入失敗。請檢查控制台錯誤。';
             addButton.disabled = true;
+            // 離線 fallback
+            userId = crypto.randomUUID();
+            isAuthReady = true;
+            userIdDisplay.textContent = userId + " (離線模式)";
+            loadingMessage.classList.add('hidden');
         }
     }
 
