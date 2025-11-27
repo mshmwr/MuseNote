@@ -201,8 +201,7 @@
         doc, 
         setDoc,
         deleteDoc,
-        query,
-        setLogLevel 
+        query
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // =========================================================================
@@ -298,8 +297,11 @@
             }
 
             // 驗證必要的配置字段
-            if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-                const errorMsg = '❌ Firebase 配置不完整，缺少 apiKey 或 projectId。';
+            const requiredFields = ['apiKey', 'authDomain', 'projectId'];
+            const missingFields = requiredFields.filter(field => !firebaseConfig[field]);
+            
+            if (missingFields.length > 0) {
+                const errorMsg = `❌ Firebase 配置不完整，缺少: ${missingFields.join(', ')}`;
                 console.error(errorMsg, firebaseConfig);
                 loadingMessage.textContent = errorMsg;
                 addButton.disabled = true;
@@ -307,12 +309,18 @@
             }
 
             console.log('✅ Firebase 配置有效，開始初始化...');
+            console.log('Firebase 項目:', firebaseConfig.projectId);
             
+            // 初始化 Firebase App
             app = initializeApp(firebaseConfig);
+            console.log('✅ Firebase App 已初始化');
+            
+            // 獲取 Auth 和 Firestore 實例
             auth = getAuth(app);
+            console.log('✅ Firebase Auth 已初始化');
+            
             db = getFirestore(app);
-
-            console.log('✅ Firebase 應用已初始化');
+            console.log('✅ Firebase Firestore 已初始化');
 
             // 認證流程：優先使用 custom token 登入，否則使用匿名登入
             if (initialAuthToken) { 
