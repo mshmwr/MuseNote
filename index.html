@@ -165,6 +165,26 @@
     </p>
 </div>
 
+<!-- Firebase 配置設定模態視窗 -->
+<div id="firebase-config-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-96 overflow-y-auto">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">⚙️ Firebase 配置設定</h2>
+        <p class="text-gray-600 mb-4">請貼上您的 Firebase 專案配置 (JSON 格式)：</p>
+        
+        <textarea id="firebase-config-input" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}' 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 font-mono text-sm h-40 mb-4"></textarea>
+        
+        <div class="flex gap-3">
+            <button id="config-save-btn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg">💾 保存配置</button>
+            <button id="config-skip-btn" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">⏭️ 略過 (離線模式)</button>
+        </div>
+        
+        <p class="text-xs text-gray-400 mt-4">
+            💡 提示：配置將儲存在瀏覽器的本機儲存中。如需幫助，請查看 <a href="https://firebase.google.com/docs/web/setup" target="_blank" class="text-blue-500 hover:underline">Firebase 文件</a>
+        </p>
+    </div>
+</div>
+
 <!-- 模態視窗 (Modal) 用於顯示筆記詳情 -->
 <div id="note-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-50 p-4" onclick="document.getElementById('note-detail-modal').classList.add('hidden')">
     <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
@@ -273,6 +293,63 @@
     
     const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
 
+    // Firebase 配置設定模態相關元素
+    const firebaseConfigModal = document.getElementById('firebase-config-modal');
+    const firebaseConfigInput = document.getElementById('firebase-config-input');
+    const configSaveBtn = document.getElementById('config-save-btn');
+    const configSkipBtn = document.getElementById('config-skip-btn');
+
+    // 3. 顯示/隱藏配置設定模態的函式
+    function showFirebaseConfigModal() {
+        firebaseConfigModal.style.display = 'flex';
+    }
+
+    function hideFirebaseConfigModal() {
+        firebaseConfigModal.style.display = 'none';
+    }
+
+    // 儲存 Firebase 配置到 localStorage
+    function saveFirebaseConfig(config) {
+        try {
+            localStorage.setItem('firebase_config', JSON.stringify(config));
+            firebaseConfig = config;
+            console.log('Firebase 配置已保存');
+            hideFirebaseConfigModal();
+            startApp();
+        } catch (e) {
+            showMessage(`保存配置失敗: ${e.message}`, true);
+            console.error('保存配置失敗:', e);
+        }
+    }
+
+    // 綁定配置設定按鈕事件
+    configSaveBtn.addEventListener('click', () => {
+        const input = firebaseConfigInput.value.trim();
+        if (!input) {
+            showMessage('請輸入 Firebase 配置!', true);
+            return;
+        }
+        try {
+            const config = JSON.parse(input);
+            if (!config.apiKey || !config.projectId) {
+                showMessage('Firebase 配置不完整 (缺少 apiKey 或 projectId)', true);
+                return;
+            }
+            saveFirebaseConfig(config);
+        } catch (e) {
+            showMessage(`配置格式錯誤: ${e.message}`, true);
+        }
+    });
+
+    configSkipBtn.addEventListener('click', () => {
+        hideFirebaseConfigModal();
+        // 進入離線模式
+        userId = crypto.randomUUID();
+        isAuthReady = true;
+        userIdDisplay.textContent = userId + " (離線模式)";
+        loadingMessage.classList.add('hidden');
+        console.log('進入離線模式，使用 UUID:', userId);
+    });
 
     // 3. 實用函數：顯示錯誤訊息
     function showMessage(text, isError = true) {
@@ -300,14 +377,8 @@
             if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
                 const errorMsg = 'Firebase 配置未提供。請設定 __firebase_config 環境變數。';
                 console.warn(errorMsg);
-                showMessage(errorMsg, true);
-                loadingMessage.textContent = errorMsg;
-                addButton.disabled = true;
-                // 使用 offline 模式：生成臨時 ID
-                userId = crypto.randomUUID();
-                isAuthReady = true;
-                userIdDisplay.textContent = userId + " (離線模式)";
                 loadingMessage.classList.add('hidden');
+                showFirebaseConfigModal();
                 return;
             }
             
@@ -901,7 +972,20 @@
         filterAndRender();
     });
 
-    // 啟動應用程式
+    // 啟動應用程式 (先檢查 localStorage 中的配置)
+    // 如果 localStorage 中有保存的配置，則直接使用
+    if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+        const savedConfig = localStorage.getItem('firebase_config');
+        if (savedConfig) {
+            try {
+                firebaseConfig = JSON.parse(savedConfig);
+                console.log('從 localStorage 載入 Firebase 配置');
+            } catch (e) {
+                console.warn('localStorage 中的配置格式無效:', e);
+            }
+        }
+    }
+    
     startApp();
 
 </script>
