@@ -165,26 +165,6 @@
     </p>
 </div>
 
-<!-- Firebase 配置設定模態視窗 -->
-<div id="firebase-config-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-96 overflow-y-auto">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">⚙️ Firebase 配置設定</h2>
-        <p class="text-gray-600 mb-4">請貼上您的 Firebase 專案配置 (JSON 格式)：</p>
-        
-        <textarea id="firebase-config-input" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}' 
-                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 font-mono text-sm h-40 mb-4"></textarea>
-        
-        <div class="flex gap-3">
-            <button id="config-save-btn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg">💾 保存配置</button>
-            <button id="config-skip-btn" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">⏭️ 略過 (離線模式)</button>
-        </div>
-        
-        <p class="text-xs text-gray-400 mt-4">
-            💡 提示：配置將儲存在瀏覽器的本機儲存中。如需幫助，請查看 <a href="https://firebase.google.com/docs/web/setup" target="_blank" class="text-blue-500 hover:underline">Firebase 文件</a>
-        </p>
-    </div>
-</div>
-
 <!-- 模態視窗 (Modal) 用於顯示筆記詳情 -->
 <div id="note-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-50 p-4" onclick="document.getElementById('note-detail-modal').classList.add('hidden')">
     <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
@@ -231,23 +211,16 @@
     
     // 必須使用環境變數來確保認證成功
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-    let firebaseConfig = {};
+    const firebaseConfig = {
+        apiKey: "AIzaSyBzK2UxhifdMZ34euxWr24YaUh3od6t09U",
+        authDomain: "musenote-1a5ec.firebaseapp.com",
+        projectId: "musenote-1a5ec",
+        storageBucket: "musenote-1a5ec.firebasestorage.app",
+        messagingSenderId: "726344810412",
+        appId: "1:726344810412:web:042538d7fc627c99a54409",
+        measurementId: "G-2N38R93PEQ"
+    };
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    
-    // 嘗試從全域變數或 localStorage 取得 Firebase 配置
-    if (typeof __firebase_config !== 'undefined') {
-        try {
-            firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
-        } catch (e) {
-            console.warn('Failed to parse __firebase_config:', e);
-        }
-    } else if (localStorage.getItem('firebase_config')) {
-        try {
-            firebaseConfig = JSON.parse(localStorage.getItem('firebase_config'));
-        } catch (e) {
-            console.warn('Failed to parse firebase_config from localStorage:', e);
-        }
-    }
 
 
     let app;
@@ -293,64 +266,6 @@
     
     const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
 
-    // Firebase 配置設定模態相關元素
-    const firebaseConfigModal = document.getElementById('firebase-config-modal');
-    const firebaseConfigInput = document.getElementById('firebase-config-input');
-    const configSaveBtn = document.getElementById('config-save-btn');
-    const configSkipBtn = document.getElementById('config-skip-btn');
-
-    // 3. 顯示/隱藏配置設定模態的函式
-    function showFirebaseConfigModal() {
-        firebaseConfigModal.style.display = 'flex';
-    }
-
-    function hideFirebaseConfigModal() {
-        firebaseConfigModal.style.display = 'none';
-    }
-
-    // 儲存 Firebase 配置到 localStorage
-    function saveFirebaseConfig(config) {
-        try {
-            localStorage.setItem('firebase_config', JSON.stringify(config));
-            firebaseConfig = config;
-            console.log('Firebase 配置已保存');
-            hideFirebaseConfigModal();
-            startApp();
-        } catch (e) {
-            showMessage(`保存配置失敗: ${e.message}`, true);
-            console.error('保存配置失敗:', e);
-        }
-    }
-
-    // 綁定配置設定按鈕事件
-    configSaveBtn.addEventListener('click', () => {
-        const input = firebaseConfigInput.value.trim();
-        if (!input) {
-            showMessage('請輸入 Firebase 配置!', true);
-            return;
-        }
-        try {
-            const config = JSON.parse(input);
-            if (!config.apiKey || !config.projectId) {
-                showMessage('Firebase 配置不完整 (缺少 apiKey 或 projectId)', true);
-                return;
-            }
-            saveFirebaseConfig(config);
-        } catch (e) {
-            showMessage(`配置格式錯誤: ${e.message}`, true);
-        }
-    });
-
-    configSkipBtn.addEventListener('click', () => {
-        hideFirebaseConfigModal();
-        // 進入離線模式
-        userId = crypto.randomUUID();
-        isAuthReady = true;
-        userIdDisplay.textContent = userId + " (離線模式)";
-        loadingMessage.classList.add('hidden');
-        console.log('進入離線模式，使用 UUID:', userId);
-    });
-
     // 3. 實用函數：顯示錯誤訊息
     function showMessage(text, isError = true) {
         messageDisplay.textContent = text;
@@ -374,22 +289,37 @@
     const startApp = async () => {
         try {
             // 驗證 Firebase 配置是否有效
-            if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
-                const errorMsg = 'Firebase 配置未提供。請設定 __firebase_config 環境變數。';
-                console.warn(errorMsg);
-                loadingMessage.classList.add('hidden');
-                showFirebaseConfigModal();
+            if (!firebaseConfig || typeof firebaseConfig !== 'object' || Object.keys(firebaseConfig).length === 0) {
+                const errorMsg = '❌ Firebase 配置無效或為空。請檢查 __firebase_config 是否正確設定。';
+                console.error(errorMsg);
+                loadingMessage.textContent = errorMsg;
+                addButton.disabled = true;
                 return;
             }
+
+            // 驗證必要的配置字段
+            if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+                const errorMsg = '❌ Firebase 配置不完整，缺少 apiKey 或 projectId。';
+                console.error(errorMsg, firebaseConfig);
+                loadingMessage.textContent = errorMsg;
+                addButton.disabled = true;
+                return;
+            }
+
+            console.log('✅ Firebase 配置有效，開始初始化...');
             
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
 
+            console.log('✅ Firebase 應用已初始化');
+
             // 認證流程：優先使用 custom token 登入，否則使用匿名登入
             if (initialAuthToken) { 
+                console.log('使用 custom token 登入...');
                 await signInWithCustomToken(auth, initialAuthToken); 
             } else { 
+                console.log('使用匿名登入...');
                 await signInAnonymously(auth); 
             }
 
@@ -401,30 +331,26 @@
                     // 認證完成後，開始監聽資料庫
                     setupRealtimeListeners();
                     addButton.disabled = false; // 啟用儲存按鈕
-                    console.log("Firebase 認證成功，userId:", userId);
+                    loadingMessage.classList.add('hidden');
+                    console.log("✅ Firebase 認證成功，userId:", userId);
                 } else {
-                    // 如果登入失敗，仍設定一個 UUID 作為未認證 ID
-                    userId = crypto.randomUUID(); 
-                    isAuthReady = true;
-                    userIdDisplay.textContent = userId + " (認證失敗或離線模式)";
-                    showMessage('無法連接 Firebase，資料可能無法持久儲存。', true);
+                    // 如果登入失敗，按鈕保持禁用
+                    userId = null;
+                    isAuthReady = false;
+                    userIdDisplay.textContent = "未認證";
+                    showMessage('❌ 無法連接 Firebase，請檢查配置和網路連線。', true);
                     addButton.disabled = true;
-                    console.error("Firebase 認證失敗，使用 UUID:", userId);
+                    loadingMessage.classList.add('hidden');
+                    console.error("❌ Firebase 認證失敗");
                 }
-                loadingMessage.classList.add('hidden'); 
             });
 
         } catch (error) {
-            console.error("Firebase 初始化或認證失敗:", error);
+            console.error("❌ Firebase 初始化或認證失敗:", error);
             const errorMsg = error.code ? `Firebase 錯誤 (${error.code}): ${error.message}` : `初始化失敗: ${error.message}`;
             showMessage(errorMsg, true);
-            loadingMessage.textContent = '載入失敗。請檢查控制台錯誤。';
+            loadingMessage.textContent = `❌ 載入失敗: ${error.message}`;
             addButton.disabled = true;
-            // 離線 fallback
-            userId = crypto.randomUUID();
-            isAuthReady = true;
-            userIdDisplay.textContent = userId + " (離線模式)";
-            loadingMessage.classList.add('hidden');
         }
     }
 
@@ -446,7 +372,7 @@
         return processedTags;
     }
 
-    // 7. 新增靈感筆記 (保持不變)
+    // 7. 新增靈感筆記
     async function addInspiration() {
         const title = titleInput.value.trim();
         const remark = remarkInput.value.trim();
@@ -457,12 +383,13 @@
         const tags = tagString.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
         if (!title) {
-            showMessage('請輸入標題！', true);
+            showMessage('❌ 請輸入標題！', true);
             return;
         }
         
         if (!isAuthReady || !auth.currentUser) {
-            showMessage('應用程式尚未準備好 (認證中或失敗)。請稍候。', true);
+            showMessage('❌ Firebase 未準備好或未認證。請檢查配置。', true);
+            console.error('Auth not ready:', { isAuthReady, currentUser: auth?.currentUser });
             return;
         }
 
@@ -488,11 +415,12 @@
             urlInput.value = '';
             imageUrlInput.value = '';
             tagInput.value = '';
-            showMessage('靈感筆記儲存成功！', false);
+            showMessage('✅ 靈感筆記儲存成功！', false);
+            console.log('✅ 筆記已儲存');
 
         } catch (error) {
-            console.error("新增靈感失敗:", error);
-            showMessage(`新增失敗: ${error.message}。請檢查控制台錯誤。`, true);
+            console.error("❌ 新增靈感失敗:", error);
+            showMessage(`❌ 新增失敗: ${error.message}`, true);
         } finally {
             addButton.disabled = false; 
         }
@@ -500,9 +428,14 @@
     
     addButton.addEventListener('click', addInspiration);
 
-    // 8. 實時資料監聽器 (保持不變)
+    // 8. 實時資料監聽器
     function setupRealtimeListeners() {
-        if (!db || !userId) return;
+        if (!db || !userId) {
+            console.error('❌ 無法設定監聽器：db 或 userId 未定義');
+            return;
+        }
+
+        console.log('✅ 開始設定實時監聽器...');
 
         // 監聽標籤 metadata
         const tagMetadataRef = collection(db, getTagMetadataPath());
@@ -512,11 +445,12 @@
                 newTagMetadata[doc.id] = doc.data().colorClass;
             });
             tagMetadata = newTagMetadata;
+            console.log('✅ 標籤 metadata 已更新，共', Object.keys(tagMetadata).length, '個標籤');
             renderTagFilters(); 
             filterAndRender(); 
         }, (error) => {
-            console.error("標籤 metadata 監聽失敗:", error);
-            showMessage("標籤資料庫連接錯誤。", true);
+            console.error("❌ 標籤 metadata 監聽失敗:", error);
+            showMessage(`❌ 標籤資料庫連接錯誤: ${error.message}`, true);
         });
 
         // 監聽靈感筆記
@@ -527,11 +461,12 @@
                 ...doc.data()
             }));
             allInspirations.sort((a, b) => b.createdAt - a.createdAt);
+            console.log('✅ 靈感筆記已更新，共', allInspirations.length, '條筆記');
 
             filterAndRender(); 
         }, (error) => {
-            console.error("靈感筆記監聽失敗:", error);
-            showMessage("靈感筆記資料庫連接錯誤。", true);
+            console.error("❌ 靈感筆記監聽失敗:", error);
+            showMessage(`❌ 靈感筆記資料庫連接錯誤: ${error.message}`, true);
         });
     }
 
@@ -913,15 +848,16 @@
     }
 
 
-    // 15. 刪除靈感筆記 (保持不變)
+    // 15. 刪除靈感筆記
     async function deleteInspiration(noteId) {
         try {
             const noteDocRef = doc(db, getInspirationsPath(), noteId);
             await deleteDoc(noteDocRef);
-            showMessage('靈感筆記已刪除！', false);
+            showMessage('✅ 靈感筆記已刪除！', false);
+            console.log('✅ 筆記已刪除:', noteId);
         } catch (error) {
-            console.error("刪除筆記失敗:", error);
-            showMessage(`刪除失敗: ${error.message}`, true);
+            console.error("❌ 刪除筆記失敗:", error);
+            showMessage(`❌ 刪除失敗: ${error.message}`, true);
         }
     }
 
@@ -972,20 +908,14 @@
         filterAndRender();
     });
 
-    // 啟動應用程式 (先檢查 localStorage 中的配置)
-    // 如果 localStorage 中有保存的配置，則直接使用
-    if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
-        const savedConfig = localStorage.getItem('firebase_config');
-        if (savedConfig) {
-            try {
-                firebaseConfig = JSON.parse(savedConfig);
-                console.log('從 localStorage 載入 Firebase 配置');
-            } catch (e) {
-                console.warn('localStorage 中的配置格式無效:', e);
-            }
-        }
-    }
-    
+    // 啟動應用程式
+    console.log('🚀 MuseNote 應用正在啟動...');
+    console.log('Firebase 配置:', {
+        hasApiKey: !!firebaseConfig?.apiKey,
+        hasProjectId: !!firebaseConfig?.projectId,
+        hasAuthDomain: !!firebaseConfig?.authDomain,
+        projectId: firebaseConfig?.projectId || '未設定'
+    });
     startApp();
 
 </script>
