@@ -202,6 +202,7 @@
         setDoc,
         deleteDoc,
         query,
+        getDocs,
         serverTimestamp
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -957,10 +958,35 @@
     // 15. 刪除靈感筆記
     async function deleteInspiration(noteId) {
         try {
+            // 先從本地快取找出該筆記（避免額外讀取）
+            const note = allInspirations.find(n => n.id === noteId) || null;
+            const noteTags = note && note.tags ? [...note.tags] : [];
+
             const noteDocRef = doc(db, getInspirationsPath(), noteId);
             await deleteDoc(noteDocRef);
             showMessage('✅ 靈感筆記已刪除！', false);
             console.log('✅ 筆記已刪除:', noteId);
+
+            // 檢查該筆記使用的每個 tag，若無其他筆記引用則刪除 tag metadata
+            for (const tag of noteTags) {
+                // 在本地快取中檢查是否還有其他筆記使用該 tag
+                const stillUsed = allInspirations.some(n => n.id !== noteId && (n.tags || []).includes(tag));
+                if (!stillUsed) {
+                    try {
+                        const tagDocRef = doc(db, getTagMetadataPath(), tag);
+                        await deleteDoc(tagDocRef);
+                        // 同步移除本地 metadata 並更新 UI
+                        delete tagMetadata[tag];
+                        console.log(`✅ 已刪除未被使用的 tag metadata: ${tag}`);
+                    } catch (errTag) {
+                        console.warn(`⚠️ 刪除 tag metadata 失敗 (${tag}):`, errTag.message || errTag);
+                    }
+                }
+            }
+
+            // 觸發 UI 更新（資料庫快照會在 onSnapshot 更新 allInspirations，但我們也立即重整 tag list）
+            renderTagFilters();
+            filterAndRender();
         } catch (error) {
             console.error("❌ 刪除筆記失敗:", error);
             showMessage(`❌ 刪除失敗: ${error.message}`, true);
