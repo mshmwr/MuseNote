@@ -201,7 +201,8 @@
         doc, 
         setDoc,
         deleteDoc,
-        query
+        query,
+        serverTimestamp
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // =========================================================================
@@ -227,6 +228,8 @@
     let auth;
     let userId = null;
     let isAuthReady = false;
+    let editMode = false;
+    let editingId = null;
     let allInspirations = []; 
     let tagMetadata = {};     
     let selectedTags = [];    
@@ -382,17 +385,29 @@
 
     // 7. 新增靈感筆記
     async function addInspiration() {
-        const title = titleInput.value.trim();
+        const titleRaw = titleInput.value.trim();
         const remark = remarkInput.value.trim();
-        const inspirationDate = dateInput.value.trim(); 
+        // 若未選日期，預設為今天
+        const inspirationDate = (dateInput.value && dateInput.value.trim()) ? dateInput.value.trim() : new Date().toISOString().slice(0,10);
         const url = urlInput.value.trim();
         const imageUrl = imageUrlInput.value.trim();
         const tagString = tagInput.value.trim();
         const tags = tagString.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
+        // 處理 title: 若空則以 default-xx 自動編號
+        let title = titleRaw;
         if (!title) {
-            showMessage('❌ 請輸入標題！', true);
-            return;
+            // 從現有筆記找出以 default- 開頭的最大編號
+            const defaults = allInspirations
+                .map(n => n.title || '')
+                .filter(t => t.startsWith('default-'))
+                .map(t => {
+                    const m = t.match(/^default-(\d+)$/);
+                    return m ? parseInt(m[1], 10) : NaN;
+                })
+                .filter(n => !isNaN(n));
+            const maxNum = defaults.length > 0 ? Math.max(...defaults) : 0;
+            title = `default-${maxNum + 1}`;
         }
         
         if (!isAuthReady || !auth.currentUser) {
@@ -406,29 +421,54 @@
         try {
             const processedTags = await processTags(tags);
             const inspirationsCollectionRef = collection(db, getInspirationsPath());
-            
-            await addDoc(inspirationsCollectionRef, {
-                title: title,
-                remark: remark,
-                inspirationDate: inspirationDate || null, 
-                url: url,
-                imageUrl: imageUrl,
-                tags: processedTags,
-                createdAt: Date.now()
-            });
 
+            if (editMode && editingId) {
+                // 更新既有筆記
+                const noteDocRef = doc(db, getInspirationsPath(), editingId);
+                await setDoc(noteDocRef, {
+                    title: title,
+                    remark: remark,
+                    inspirationDate: inspirationDate || null,
+                    url: url,
+                    imageUrl: imageUrl,
+                    tags: processedTags,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+                console.log('✅ 筆記已更新:', editingId);
+                showMessage('✅ 筆記更新成功！', false);
+            } else {
+                await addDoc(inspirationsCollectionRef, {
+                    title: title,
+                    remark: remark,
+                    inspirationDate: inspirationDate || null, 
+                    url: url,
+                    imageUrl: imageUrl,
+                    tags: processedTags,
+                    createdAt: serverTimestamp()
+                });
+                console.log('✅ 筆記已儲存');
+                showMessage('✅ 靈感筆記儲存成功！', false);
+            }
+
+            // 清除輸入並結束編輯狀態
             titleInput.value = '';
             remarkInput.value = '';
-            dateInput.value = ''; 
+            dateInput.value = '';
             urlInput.value = '';
             imageUrlInput.value = '';
             tagInput.value = '';
-            showMessage('✅ 靈感筆記儲存成功！', false);
-            console.log('✅ 筆記已儲存');
+            if (editMode) {
+                editMode = false;
+                editingId = null;
+                addButton.textContent = '💾 儲存靈感';
+                // 移除 cancel 按鈕（若有）
+                const existingCancel = document.getElementById('cancel-edit-button');
+                if (existingCancel) existingCancel.remove();
+            }
 
         } catch (error) {
-            console.error("❌ 新增靈感失敗:", error);
-            showMessage(`❌ 新增失敗: ${error.message}`, true);
+            console.error("❌ 新增/更新靈感失敗:", error);
+            showMessage(`❌ 新增/更新失敗: ${error.message}`, true);
         } finally {
             addButton.disabled = false; 
         }
@@ -468,7 +508,12 @@
                 id: doc.id,
                 ...doc.data()
             }));
-            allInspirations.sort((a, b) => b.createdAt - a.createdAt);
+            // 若 createdAt 為 Firestore Timestamp，轉成 millis 比較
+            allInspirations.sort((a, b) => {
+                const aTime = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : (typeof a.createdAt === 'number' ? a.createdAt : 0);
+                const bTime = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+                return bTime - aTime;
+            });
             console.log('✅ 靈感筆記已更新，共', allInspirations.length, '條筆記');
 
             filterAndRender(); 
@@ -598,7 +643,7 @@
             return;
         }
 
-        notes.forEach(note => {
+            notes.forEach(note => {
             const noteElement = document.createElement('div');
             noteElement.className = `p-5 bg-white border border-gray-200 rounded-xl shadow-lg hover:shadow-xl transition duration-300 space-y-3`;
             
@@ -621,7 +666,7 @@
                     <h3 class="text-xl font-bold text-gray-900 pr-4">${note.title}</h3>
                     <div class="flex space-x-2 flex-shrink-0">
                         <!-- 編輯按鈕 -->
-                        <button class="edit-note p-2 text-gray-500 hover:text-blue-600 rounded-full transition duration-150" data-id="${note.id}" onclick="showMessage('編輯功能待建構', true)">
+                        <button class="edit-note p-2 text-gray-500 hover:text-blue-600 rounded-full transition duration-150" data-id="${note.id}">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
                         <!-- 刪除按鈕 -->
@@ -648,6 +693,14 @@
             noteElement.querySelector('.delete-note').addEventListener('click', () => {
                 deleteInspiration(note.id);
             });
+
+            // 編輯按鈕監聽
+            const editBtn = noteElement.querySelector('.edit-note');
+            if (editBtn) {
+                editBtn.addEventListener('click', () => {
+                    startEdit(note.id);
+                });
+            }
         });
     }
     
@@ -697,6 +750,51 @@
             `;
             tagGroupList.appendChild(tagSection);
         });
+    }
+
+    // 14a. 進入編輯模式：將筆記資料放到輸入框中
+    function startEdit(noteId) {
+        const note = allInspirations.find(n => n.id === noteId);
+        if (!note) return;
+        editMode = true;
+        editingId = noteId;
+        // 填入欄位
+        titleInput.value = note.title || '';
+        remarkInput.value = note.remark || '';
+        dateInput.value = note.inspirationDate || new Date().toISOString().slice(0,10);
+        urlInput.value = note.url || '';
+        imageUrlInput.value = note.imageUrl || '';
+        tagInput.value = (note.tags || []).join(', ');
+
+        addButton.textContent = '🔁 更新筆記';
+        addButton.disabled = false;
+
+        // 新增或顯示取消按鈕
+        let cancelBtn = document.getElementById('cancel-edit-button');
+        if (!cancelBtn) {
+            cancelBtn = document.createElement('button');
+            cancelBtn.id = 'cancel-edit-button';
+            cancelBtn.className = 'ml-3 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg';
+            cancelBtn.textContent = '取消';
+            cancelBtn.addEventListener('click', cancelEdit);
+            addButton.parentNode.appendChild(cancelBtn);
+        }
+        // 滾動到輸入區域
+        titleInput.focus();
+    }
+
+    function cancelEdit() {
+        editMode = false;
+        editingId = null;
+        titleInput.value = '';
+        remarkInput.value = '';
+        dateInput.value = '';
+        urlInput.value = '';
+        imageUrlInput.value = '';
+        tagInput.value = '';
+        addButton.textContent = '💾 儲存靈感';
+        const existingCancel = document.getElementById('cancel-edit-button');
+        if (existingCancel) existingCancel.remove();
     }
     
     // 13. 渲染日曆檢視 (新的預設檢視)

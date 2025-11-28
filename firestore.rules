@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 對單一使用者的 inspirations 集合
+    match /artifacts/{appId}/users/{userId}/inspirations/{inspirationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    // 基本欄位驗證
+                    && request.resource.data.title is string
+                    && (request.resource.data.remark == null || request.resource.data.remark is string)
+                    && (request.resource.data.tags == null || request.resource.data.tags is list)
+                    && (request.resource.data.url == null || request.resource.data.url is string)
+                    && (request.resource.data.imageUrl == null || request.resource.data.imageUrl is string);
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 對單一使用者的 tag_metadata 集合
+    match /artifacts/{appId}/users/{userId}/tag_metadata/{tagId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update, delete: if request.auth != null
+                                   && request.auth.uid == userId
+                                   && (request.resource.data.colorClass is string);
+    }
+
+    // 預設情況：沒有其他規則時，會被拒絕（Firestore 預設 deny）
+  }
+}
